@@ -1,0 +1,6 @@
+{
+    "access_token": "你的access_token",
+    "token_type": "bearer",
+    "expires_in": "根據你的access_token的有效期而定",
+    "user_id": "你的用戶ID"
+}

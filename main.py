@@ -1,18 +1,20 @@
-from google import genai
+from google import genai 
 from google.genai.types import HttpOptions
 from Threads import Threads_scraper
 from threadsStore import store_posts, get_posts_by_label
 import json
 import asyncio
 from threadsPost import ThreadsAPI
+from threadsRealdatabase import fetch_top_query, delete_posts, store_posts_to_firestore
 with open('config/threadsUser.json','r',encoding='utf-8') as f:
         cfg = json.load(f)
 threads=Threads_scraper(username=cfg['username'])
-threads.filter_setting(gclike=1000)
+threads.filter_setting(gclike=100)
 posts=(asyncio.run(
-        threads.Top_crawl(batch=5)
+        threads.Top_crawl(batch=1)
     ))
 posts=json.loads(threads.getJosn(posts))
+
 system_prompt_tagging="""你是一位社群資料分析師，要根據下方定義，判斷每篇 Threads 帖文屬於哪些主題類別。
 【主題類別定義】
 1. Emotion – 情緒共鳴  
@@ -23,11 +25,9 @@ system_prompt_tagging="""你是一位社群資料分析師，要根據下方定�
    - 生活小技巧、工具／清單推薦、速讀式教學、職場或戀愛洞察。  
 4. Identity – 身分認同／圈層梗  
    - 只對特定族群有梗：#大學生 #工程師日常 #社畜心聲…"
-5. Other – 以上皆非或無法歸類。 
 【標註規則】
-- 一篇貼文可屬於「多個」類別，請用 true/false 表示。  
+- 一篇貼文可屬於「多個」類別，從 Emotion、Trend、Practical、Identity 這四類中，找出所有符合此貼文的標籤 
 - 先找**主導**類別；若同時符合其他類別，再額外標註。  
-- 若判定困難，解釋原因並標 `Other:true`。
 【輸出格式（JSON）】
 ```json
 {
@@ -36,15 +36,10 @@ system_prompt_tagging="""你是一位社群資料分析師，要根據下方定�
   "text": "<原始資料的貼文內容>",
   "like_count": <原始資料的按讚數>,
   "reply_count": <原始資料的回覆數>,
-  "Emotion": true/false,
-  "Trend": true/false,
-  "Practical": true/false,
-  "Identity": true/false,
-  "Other": true/false
-  "reasoning": "<20~40 字說明歸類依據，必要時可列多點>"
+  "timestamp": "<原始資料的時間 ISO 8601 格式>",
+  "tags": ["Emotion", "Trend", "Practical", "Identity"]  // 只列出符合這篇貼文的標籤
 }
 """
-
 project_id="threads-poster"
 location="us-central1"
 client = genai.Client(
@@ -63,13 +58,16 @@ for post in posts['posts']:
    )
    sigle_batch = json.loads(response.text)
    results.append(sigle_batch)
-store_posts(results)
+
+store_posts_to_firestore(results)
+
+
 category = input("請輸入要產生的類別文章：")
 
 while category not in ["Emotion","Trend","Practical","Identity","Visual"]:
    print("請輸入正確的類別：Emotion｜Trend｜Practical｜Identity｜Visual")
    category = input("請輸入要產生的類別文章：")   
-filtered_posts = get_posts_by_label(category)
+posts=fetch_top_query(limit=10,label=category,days_keep=7)
 
 system_prompt_generate=f"""
 【系統角色】  
@@ -85,7 +83,7 @@ system_prompt_generate=f"""
 - 文章結構要包含：  
   1. **吸睛開頭**：一句勾起好奇／共鳴的文字  
   2. **核心亮點**：緊扣「類別」主題、融入足夠細節  
-  3. **互動誘因**：一句行動呼籲或 hashtag (只能有一個最適合的) 
+  3. **不用產生hashtag**
 - **字數不超過 100 字**，繁體中文。  
 - **不需要**附上任何圖片或影片。
 - 直接產生文章，不需要有任何的說明或標題。
@@ -97,6 +95,7 @@ system_prompt_generate=f"""
   "text": "<原始資料的貼文內容>",
   "like_count": <原始資料的按讚數>,
   "reply_count": <原始資料的回覆數>,
+  "timestmp":<原始資料的時間>,
   "Emotion": true/false,
   "Trend": true/false,
   "Practical": true/false,
@@ -107,12 +106,26 @@ system_prompt_generate=f"""
 messages = [
     {"role": "system", "content": system_prompt_generate}
 ]
+def clean_post_json(post):
+    """清理一筆 post，適合輸出成 JSON"""
+    ts = post.get("timestamp")
+    if hasattr(ts, 'isoformat'):
+        ts = ts.isoformat()
 
+    return {
+        "id": post.get("id", ""),
+        "username": post.get("username", ""),
+        "text": (post.get("text", "") or "").replace("\n", " "),
+        "like_count": post.get("like_count", 0),
+        "reply_count": post.get("reply_count", 0),
+        "timestamp": ts
+    }
 # 2. 分批加入每則範例
-for post in filtered_posts:
+for post in posts:
+    
     messages.append({
         "role": "user",
-        "content": json.dumps({"examples": [post]}, ensure_ascii=False)
+        "content": json.dumps({"examples": [clean_post_json(post)]}, ensure_ascii=False)
     })
 messages.append({
     "role": "user",

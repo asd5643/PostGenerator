@@ -13,6 +13,7 @@ import jmespath
 from nested_lookup import nested_lookup
 from parsel import Selector
 from playwright.async_api import async_playwright
+from datetime import datetime,timedelta, timezone
 import os
 class Threads_scraper:
         def __init__(self,search_choice:str="like_count",acc:bool=False,username:Optional[List[str]]=None):
@@ -38,6 +39,7 @@ class Threads_scraper:
         def _save_seen(self):
             with open('config/existID.json', 'w', encoding='utf-8') as f:
                 json.dump(list(self.seen), f, ensure_ascii=False, indent=1)
+            print("seen ID saved.")
         def _parse_post(self,item: Dict) -> Dict:
             """把原始 thread_items 物件濃縮成精簡欄位。"""
             return jmespath.search(
@@ -49,8 +51,7 @@ class Threads_scraper:
                 like_count: post.like_count,
                 reply_count: post.text_post_app_info.direct_reply_count,
                 username: post.user.username,
-                media_urls: post.carousel_media[].image_versions2.candidates[0].url,
-                video_urls: post.video_versions[].url
+                timestamp: post.taken_at
                 }
                 """,
                 item,
@@ -134,18 +135,19 @@ class Threads_scraper:
                     "text": (post.get("text", "") or "").replace("\n", " "), # 處理文字內容，替換換行符
                     "like_count": post.get("like_count", 0),
                     "reply_count": post.get("reply_count", 0),
+                    "timestamp":post.get("timestamp", 0),
                 }
                 cleaned_posts.append(cleaned_post)
-
             out = {"posts": cleaned_posts}
             return json.dumps(out, ensure_ascii=False, indent=1)
 if __name__ == "__main__":
     with open('config/threadsUser.json','r',encoding='utf-8') as f:
         cfg = json.load(f)
-    threads=Threads_scraper(username=cfg['username'])
+    threads=Threads_scraper(username=["huang.weizhu"])
     threads.filter_setting(gclike=1)
     posts=(asyncio.run(
             threads.Top_crawl(batch=10)
         ))
     #threads.printPost(posts)
-    threads.printJosn(posts)
+    p=json.loads(threads.getJosn(posts))
+    print(p)

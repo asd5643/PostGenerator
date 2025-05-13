@@ -2,8 +2,14 @@ from infoLLM import infoLLM
 from Threads import Threads_scraper as ts
 from vectorDatabase import vectorDatabase as db
 from threadsPost import ThreadsAPI
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import json
 import asyncio
+
+testing = "fail"
+
+
 class Workflow:
     def __init__(self):
         with open('config/threadsUser.json','r',encoding='utf-8') as f:
@@ -72,33 +78,46 @@ class Workflow:
         score = json.loads(response.text)
         return float(score['total_score']) 
     def work_flow(self,userquery:str,style:str,size:int,fetch:bool,tag:str)->str:
-        if(fetch):
-            self.tagging_new_scrape_posts_into_pinecone()
-        score=0
-        post=""
+        #if(fetch):
+        #    self.tagging_new_scrape_posts_into_pinecone()
+        score=0.7
+        post="try testing post"
         while score<0.7:
             post=self.generate_post(tag=tag,userquery=userquery,style=style,size=size)
             score=self.evaluate_post(userquery=userquery,post=post,tag=tag,style=style)
             print(f"目前評分：{score} \n 文章：{post}")
         verify = input("請問要發佈嗎？(y/n)").lower()
         if verify == "y":
-            threadsAPI = ThreadsAPI()
-            post_id = threadsAPI.publish_text(post)
-            print(f"發文成功！貼文 ID: {post_id}")
+            #threadsAPI = ThreadsAPI()
+            #post_id = threadsAPI.publish_text(post)
+            print(f"發文成功！貼文 ID: ")
         else:
+            testing = post
             print("已取消發文。")
 
-if __name__ == "__main__":
+app = Flask(__name__)
+CORS(app)  # 解決跨域問題
+
+@app.route('/get_post', methods=['POST'])
+def get_post():
+    data = request.get_json()
+    Type = data.get('type', 'Emotion')
+    none = "none"
     workflow = Workflow()
-    userquery = input("請輸入要產生的文章內容短敘述:")
-    category = input("請輸入要產生的類別文章：")
-    tag = input("請輸入要使用的標籤")
-    while category not in ["Emotion","Trend","Practical","Identity"]:
-        print("請輸入正確的類別：Emotion｜Trend｜Practical｜Identity")
-        category = input("請輸入要產生的類別文章：")   
-    size=int(input("請輸入要產生的文章字數："))
-    fetch = input("是否需要抓取資料？(y/n)").lower() == "y"
-    workflow.work_flow(userquery=userquery,style=category,size=size,fetch=fetch,tag=tag)
+    workflow.work_flow(userquery=none,style=Type,size=none,fetch=none,tag=none)
+    return jsonify({'message': f'{testing}'})
+
+if __name__ == "__main__":
+    print("start")
+    app.run(host = "0.0.0.0", debug=True, port=10000)
+    #userquery = input("請輸入要產生的文章內容短敘述:")
+    #category = input("請輸入要產生的類別文章：")
+    #tag = input("請輸入要使用的標籤")
+    #while category not in ["Emotion","Trend","Practical","Identity"]:
+    #    print("請輸入正確的類別：Emotion｜Trend｜Practical｜Identity")
+    #    category = input("請輸入要產生的類別文章：")   
+    #size=int(input("請輸入要產生的文章字數："))
+    #fetch = input("是否需要抓取資料？(y/n)").lower() == "y"
        
                 
 

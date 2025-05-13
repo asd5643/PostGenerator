@@ -87,7 +87,7 @@ class Workflow:
             score=self.evaluate_post(userquery=userquery,post=post,tag=tag,style=style)
             print(f"目前評分：{score} \n 文章：{post}")
         verify = input("請問要發佈嗎？(y/n)").lower()
-        if verify == "y":
+        if 0:
             #threadsAPI = ThreadsAPI()
             #post_id = threadsAPI.publish_text(post)
             print(f"發文成功！貼文 ID: ")
